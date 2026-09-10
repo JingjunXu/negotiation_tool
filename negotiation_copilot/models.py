@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 EpistemicStatus = Literal["explicit", "inferred", "unknown", "user_confirmed"]
 MaterialScope = Literal["my_confidential", "shared", "instructor_rules"]
@@ -94,6 +94,17 @@ class PDFPageResult(BaseModel):
     error_type: str | None = None
 
 
+class TextUnit(BaseModel):
+    """One paragraph (DOCX/TXT/MD/pasted) or one PDF page, normalized so any
+    text-consuming stage (cue extraction, extraction, summarization) can work
+    the same way regardless of the source format."""
+
+    document_id: str
+    page_number: int | None = None
+    paragraph_id: str | None = None
+    text: str
+
+
 # ---------------------------------------------------------------------------
 # §6.4 Material relationships and conditional chronology
 # ---------------------------------------------------------------------------
@@ -130,6 +141,8 @@ class MaterialOrganizationResult(BaseModel):
     confirmed_order: list[str] | None
     groups: list[DocumentGroup] = Field(default_factory=list)
     relations: list[DocumentRelation] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"] = "low"
+    rationale: str = ""  # short user-facing rationale (SPEC §6.2); no hidden reasoning stored
     unresolved_ambiguities: list[str] = Field(default_factory=list)
     review_status: Literal["unreviewed", "confirmed", "edited_by_user"] = "unreviewed"
 
@@ -191,6 +204,42 @@ class OpenQuestion(BaseModel):
     context: str | None = None
     related_document_ids: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+
+
+class SummaryBullet(BaseModel):
+    text: str
+    evidence: Evidence
+
+
+class DocumentSummary(BaseModel):
+    bullets: list[SummaryBullet]  # 3-6, each linked back to its page/paragraph
+    role_and_purpose: str | None = None
+    relationship_to_others: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DocumentExtraction(BaseModel):
+    """Per-document machine-readable extraction (SPEC §7.2), produced before
+    cross-document consolidation (§7.3) merges these into a NegotiationCase."""
+
+    document_id: str
+    summary: DocumentSummary
+    my_role: ReviewedText | None = None
+    counterpart_role: ReviewedText | None = None
+    context: ReviewedText | None = None
+    objective: ReviewedText | None = None
+    interests: list[ReviewedText] = Field(default_factory=list)
+    positions: list[ReviewedText] = Field(default_factory=list)
+    batna: ReviewedText | None = None
+    issues: list[NegotiationIssue] = Field(default_factory=list)
+    targets: list[ReviewedText] = Field(default_factory=list)
+    hard_constraints: list[Constraint] = Field(default_factory=list)
+    authority_limits: list[ReviewedText] = Field(default_factory=list)
+    deadlines: list[Deadline] = Field(default_factory=list)
+    possible_concessions: list[ReviewedText] = Field(default_factory=list)
+    counterpart_information: list[ReviewedText] = Field(default_factory=list)
+    open_questions: list[OpenQuestion] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -304,8 +353,15 @@ class ConcessionStep(BaseModel):
     issue_id: str | None
     from_value: str
     to_value: str
-    ask_in_return: str  # never empty
+    ask_in_return: str  # never empty — every concession is reciprocal (SPEC §8.7)
     trigger_condition: str
+
+    @field_validator("ask_in_return")
+    @classmethod
+    def _ask_in_return_not_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("ask_in_return must not be empty — a concession step can never be unconditional")
+        return value
 
 
 class CounterTactic(BaseModel):
@@ -315,12 +371,19 @@ class CounterTactic(BaseModel):
 
 class HagglePlan(BaseModel):
     anchor: str
-    justification_standard: str  # objective criterion; required
+    justification_standard: str  # objective criterion; required — an anchor without one is invalid (SPEC §8.7)
     trade_currencies: list[TradeCurrency] = Field(default_factory=list)
     packages: list[TradePackage] = Field(default_factory=list)
     concession_ladder: list[ConcessionStep] = Field(default_factory=list)
     counter_tactics: list[CounterTactic] = Field(default_factory=list)
     validator_warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("justification_standard")
+    @classmethod
+    def _justification_standard_not_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("justification_standard must not be empty — an anchor without one is invalid")
+        return value
 
 
 class NegotiationAnalysis(BaseModel):
@@ -343,6 +406,8 @@ class NegotiationAnalysis(BaseModel):
 class NegotiationCase(BaseModel):
     case_id: str = Field(default_factory=_new_id)
     documents: list[DocumentRecord] = Field(default_factory=list)
+    relationship_cues: list[RelationshipCue] = Field(default_factory=list)
+    document_extractions: list[DocumentExtraction] = Field(default_factory=list)
     organization: MaterialOrganizationResult | None = None
 
     my_role: ReviewedText | None = None
@@ -390,6 +455,7 @@ class BriefSectionState(BaseModel):
     status: Literal["confirmed", "tentative", "needs_verification", "no_longer_relevant"] = "tentative"
     pinned: bool = False
     stale: bool = False
+    source_fingerprint: str | None = None  # hash of the case/analysis data this section was built from
     notes: list[BriefNote] = Field(default_factory=list)
 
 
@@ -428,6 +494,28 @@ class LiveInteraction(BaseModel):
     selected_brief_section_ids: list[str] = Field(default_factory=list)
     output: dict
     saved_note_id: str | None = None
+
+
+class NegotiationBrief(BaseModel):
+    """The Prep Brief (SPEC §10.2): 18 BriefSectionState entries, one per
+    named section, generated from confirmed data only."""
+
+    sections: list[BriefSectionState] = Field(default_factory=list)
+    generation_notes: list[str] = Field(default_factory=list)
+
+
+class LiveCard(BaseModel):
+    """Compressed view for live use (SPEC §10.1): same data source as the
+    Prep Brief, hard-capped so it fits on one screen with no long scrolling."""
+
+    walk_away_line: str
+    redlines: list[str] = Field(default_factory=list)
+    my_top_interests: list[str] = Field(default_factory=list)
+    their_top_interests: list[str] = Field(default_factory=list)
+    shared_facts_opener: list[str] = Field(default_factory=list)
+    packages: list[str] = Field(default_factory=list)
+    next_questions: list[str] = Field(default_factory=list)
+    pinned_sections: list[BriefSectionState] = Field(default_factory=list)
 
 
 class LiveWorkspaceState(BaseModel):

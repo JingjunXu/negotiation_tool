@@ -28,6 +28,7 @@ from .models import (
     OpenQuestion,
     PositionInterestLink,
     Redline,
+    RelationshipCue,
     ReviewedText,
     TradeCurrency,
     TradePackage,
@@ -209,8 +210,26 @@ def sample_case() -> NegotiationCase:
         values=[ConflictingValue(document_id=document.document_id, value="30 days", evidence=_evidence())],
     )
 
+    cues = [
+        RelationshipCue(
+            document_id=document.document_id,
+            cue_type="document_role",
+            normalized_value="role brief",
+            excerpt="This role brief describes the negotiation context",
+            page_number=1,
+        ),
+        RelationshipCue(
+            document_id=document.document_id,
+            cue_type="date",
+            normalized_value=None,
+            excerpt="no explicit date found in this document",
+            page_number=1,
+        ),
+    ]
+
     return NegotiationCase(
         documents=[document],
+        relationship_cues=cues,
         organization=organization,
         my_role=_reviewed("Vendor negotiating renewal"),
         counterpart_role=_reviewed("Client procurement lead"),

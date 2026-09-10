@@ -43,12 +43,11 @@ def sha256_of(data: bytes) -> str:
 
 
 def _safe_filename(filename: str) -> str:
-    name = Path(filename).name  # strips any directory components
-    if not name or name in {".", ".."} or "\x00" in filename:
+    if not filename or "\x00" in filename:
         raise UploadRejected(f"Unsafe filename: {filename!r}")
-    if name != filename.replace("\\", "/").rsplit("/", 1)[-1]:
+    if "/" in filename or "\\" in filename or ".." in filename:
         raise UploadRejected(f"Unsafe filename: {filename!r}")
-    return name
+    return filename
 
 
 def validate_upload(

@@ -1,7 +1,12 @@
 .venv/
 venv/
+envs/
+conda-meta/
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .env
 .DS_Store
 .ipynb_checkpoints/
+data/*
+!data/.gitkeep
