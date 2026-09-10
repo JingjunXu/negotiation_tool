@@ -2,6 +2,7 @@
 
 **Author:** Jingjun Xu
 **Date:** 2026/09/09
+**Link:** https://github.com/JingjunXu/negotiation_tool
 
 ## Project Overview
 
@@ -23,13 +24,27 @@ flowchart TD
     G --> H["Export and Bilingual Workspace"]
 ```
 
+**Design rationale and supported use.**
+The workflow mirrors negotiation preparation: evidence is organized, structured into a case, analyzed strategically, and distilled into a live brief. A multi-page Streamlit interface provides progressive disclosure while linking sources, computations, and outputs. It supports multi-document review, redline tracking, and interest-based option generation while retaining final judgment with the user.
+
 **Implementation note.** Automated tests primarily use offline or simulated clients; browser-level testing with live LLM API calls remains limited. Current API-integration issues have prevented complete validation of all interface interactions, so some API-dependent functions are not yet fully implemented or stable.
 
-![materials](image.png)
+<table>
+  <tr>
+    <td><img src="image.png" width="280"></td>
+    <td><img src="image-1.png" width="280"></td>
+  </tr>
+  <tr>
+    <td><img src="image-3.png" width="280"></td>
+    <td><img src="image-4.png" width="280"></td>
+  </tr>
+</table>
+
+<!-- ![materials](image.png)
 ![negotiation_map](image-1.png)
 ![con_negotiation_map](image-2.png)
 ![strategy](image-3.png)
-![brief](image-4.png)
+![brief](image-4.png) -->
 
 ## Future Adaptation
 
